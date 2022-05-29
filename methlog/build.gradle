@@ -1,6 +1,10 @@
 apply plugin: 'com.android.library'
 apply plugin: 'com.vanniktech.maven.publish'
 
+// For local publishing & testing.
+// apply plugin: 'maven-publish'
+
+
 android {
     compileSdk 32
 
@@ -14,3 +18,20 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 }
+
+/*
+ * For local publishing & testing.
+ *
+ * group = 'com.lazygeniouz.methlog'
+ * version = '1.3.0'
+ *
+ * project.afterEvaluate {
+ *     publishing {
+ *         publications {
+ *             aar(MavenPublication) {
+ *                 artifact bundleReleaseAar
+ *             }
+ *         }
+ *     }
+ * }
+ * */
