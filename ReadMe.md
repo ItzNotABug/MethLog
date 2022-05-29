@@ -16,11 +16,11 @@ buildscript {
         google()
         mavenCentral()
     }
-    
+
     dependencies {
-        classpath 'com.lazygeniouz.methlog:methlog-plugin:1.2.8'
+        classpath 'com.lazygeniouz.methlog:methlog-plugin:1.3.0'
         // the plugin also adds the dependency for @MethLog annotation internally, 
-        // so that you don't have to manually add the same to every one of your project's build.gradle.
+        // so that you don't have to add it to every one of your project's build.gradle.
     }
 }
 ```
@@ -29,6 +29,12 @@ then in your app or library's `build.gradle`:
 apply plugin: 'com.android.application'
 // or 'com.android.library' in case of a library
 apply plugin: 'com.lazygeniouz.methlog'
+```
+You can enable & disable MethLog by adding the following:
+```groovy
+methLog {
+    enabled true // false to disable transformation & logging.
+}
 ```
 
 ### Using `@MethLog`
