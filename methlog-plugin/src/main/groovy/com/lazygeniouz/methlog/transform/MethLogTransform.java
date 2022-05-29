@@ -160,7 +160,7 @@ public class MethLogTransform extends Transform {
 
         long costTime = System.currentTimeMillis() - startTime;
         String message = getName() + " took " + costTime + "ms to process.";
-        logger.warn(message);
+        logger.lifecycle(message);
     }
 
     private void transformSingleFile(
@@ -208,7 +208,7 @@ public class MethLogTransform extends Transform {
                 String dexBuilderDir = replaceLastPart(dest.getAbsolutePath(), getName());
                 // intermediates/transforms/dexBuilder/debug
                 File file = new File(dexBuilderDir).getParentFile();
-                project.getLogger().warn("clean dexBuilder folder = " + file.getAbsolutePath());
+                logger.lifecycle("Clean dexBuilder folder = " + file.getAbsolutePath());
                 if (file.exists() && file.isDirectory()) {
                     com.android.utils.FileUtils.deleteDirectoryContents(file);
                 }
