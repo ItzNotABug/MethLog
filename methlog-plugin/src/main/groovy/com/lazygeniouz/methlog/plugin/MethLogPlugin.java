@@ -1,13 +1,12 @@
 package com.lazygeniouz.methlog.plugin;
 
 import com.android.annotations.NonNull;
-import com.android.build.gradle.AppExtension;
+import com.android.build.gradle.BaseExtension;
+import com.lazygeniouz.methlog.plugin.helper.PluginHelper;
 import com.lazygeniouz.methlog.transform.MethLogTransform;
 
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
-import org.gradle.api.artifacts.dsl.DependencyHandler;
-import org.gradle.api.plugins.ExtensionContainer;
 
 import java.util.Collections;
 
@@ -15,48 +14,24 @@ public class MethLogPlugin implements Plugin<Project> {
 
     @Override
     public void apply(@NonNull Project project) {
+        PluginHelper pluginHelper = new PluginHelper(project);
+
+        pluginHelper.createMethLogPlugin();
+        pluginHelper.addAnnotationsLibrary();
 
         /*
-         * @MethLog can still be added as an annotation.
-         * It would be ignored & just won't be process if the plugin is disabled.
+         * This quickly updates the build variants so
+         * we can decide whether to use transformation or not.
+         * However, this does not work for Extension value updates.
+         *
+         * The extension value is UPDATED but is completely ignored.
+         * This happens if there is NO change in Code or any other Gradle scripts.
+         *
+         * A clean or rebuild is required to toggle the enabling / disabling of the plugin.
          */
-        addAnnotationsLibrary(project);
+        project.afterEvaluate(__ -> pluginHelper.toggleAfterEvaluate());
 
-        checkExtensionAndRun(project, () -> {
-            AppExtension appExtension = (AppExtension) project.getProperties().get("android");
-            appExtension.registerTransform(new MethLogTransform(project), Collections.EMPTY_LIST);
-        });
-    }
-
-    /**
-     * Check if methLog is enabled via extension function.
-     * Initialize the Transformer only if enabled, however the value is updated in the
-     * Project.afterEvaluate block.
-     *
-     * @param project Project instance to access extension & logger.
-     * @param block   Runnable to process if methLog is enabled via extension.
-     */
-    private void checkExtensionAndRun(Project project, Runnable block) {
-        ExtensionContainer container = project.getExtensions();
-        MethLogExtension extension = container.create("methLog", MethLogExtension.class);
-
-        project.afterEvaluate(__ -> {
-            if (extension.getEnabled()) {
-                block.run();
-            } else {
-                String message = "MethLog disabled via extension, skipping transformation...";
-                project.getLogger().lifecycle(String.format("\n%s", message));
-            }
-        });
-    }
-
-    /**
-     * Add the @MethLog annotation to the project's dependency.
-     *
-     * @param project Project instance to add dependency.
-     */
-    private void addAnnotationsLibrary(Project project) {
-        DependencyHandler handler = project.getDependencies();
-        handler.add("implementation", "com.lazygeniouz.methlog:methlog:1.3.0");
+        BaseExtension baseExtension = pluginHelper.getBaseExtension();
+        baseExtension.registerTransform(new MethLogTransform(project), Collections.EMPTY_LIST);
     }
 }

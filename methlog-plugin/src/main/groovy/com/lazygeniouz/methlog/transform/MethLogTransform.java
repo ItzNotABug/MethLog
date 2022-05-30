@@ -12,14 +12,13 @@ import com.android.build.api.transform.TransformInvocation;
 import com.android.build.api.transform.TransformOutputProvider;
 import com.android.build.gradle.internal.pipeline.TransformManager;
 import com.lazygeniouz.methlog.plugin.bytecode.DebugWeaver;
+import com.lazygeniouz.methlog.plugin.helper.PluginHelper;
 import com.lazygeniouz.methlog.transform.asm.BaseWeaver;
 import com.lazygeniouz.methlog.transform.asm.ClassLoaderHelper;
-import com.lazygeniouz.methlog.transform.concurrent.Schedulers;
 import com.lazygeniouz.methlog.transform.concurrent.Worker;
 
 import org.apache.commons.io.FileUtils;
 import org.gradle.api.Project;
-import org.gradle.api.logging.Logger;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,7 +30,6 @@ import java.util.Set;
 
 public class MethLogTransform extends Transform {
 
-    private final Logger logger;
     private static final Set<QualifiedContent.Scope> SCOPES = new HashSet<>();
 
     static {
@@ -41,13 +39,14 @@ public class MethLogTransform extends Transform {
     }
 
     private final Project project;
-    private final boolean emptyRun = false;
-    private final Worker worker = Schedulers.IO();
+    private boolean injectByteCode = true;
+    private final PluginHelper pluginHelper;
+    private final Worker worker = Worker.get();
     private final BaseWeaver bytecodeWeaver = new DebugWeaver();
 
     public MethLogTransform(Project project) {
         this.project = project;
-        this.logger = project.getLogger();
+        this.pluginHelper = new PluginHelper(project);
     }
 
     @Override
@@ -71,13 +70,24 @@ public class MethLogTransform extends Transform {
     }
 
     @Override
-    public void transform(@NonNull TransformInvocation trans) throws IOException {
-        boolean isIncremental = trans.isIncremental();
-        Collection<TransformInput> inputs = trans.getInputs();
-        TransformOutputProvider outputProvider = trans.getOutputProvider();
-        Collection<TransformInput> referencedInputs = trans.getReferencedInputs();
+    public void transform(@NonNull TransformInvocation invocation) throws IOException {
+        String variantName = invocation.getContext().getVariantName();
+        boolean isDebuggableBuild = pluginHelper.checkIfBuildDebuggable(variantName);
 
-        long startTime = System.currentTimeMillis();
+        if (!isDebuggableBuild) {
+            pluginHelper.log(String.format("Skipping non-debuggable build type `%s`.", variantName));
+        } else if (!pluginHelper.isMethLogEnabled()) {
+            pluginHelper.log("MethLog is disabled.");
+        }
+
+        if (!isDebuggableBuild) injectByteCode = false;
+        else injectByteCode = pluginHelper.isMethLogEnabled();
+
+        boolean isIncremental = invocation.isIncremental();
+        Collection<TransformInput> inputs = invocation.getInputs();
+        TransformOutputProvider outputProvider = invocation.getOutputProvider();
+        Collection<TransformInput> referencedInputs = invocation.getReferencedInputs();
+
         if (!isIncremental) outputProvider.deleteAll();
 
         URLClassLoader urlClassLoader = ClassLoaderHelper.getClassLoader(inputs, referencedInputs, project);
@@ -86,32 +96,32 @@ public class MethLogTransform extends Transform {
         for (TransformInput input : inputs) {
             for (JarInput jarInput : input.getJarInputs()) {
                 Status status = jarInput.getStatus();
-                File dest = outputProvider.getContentLocation(
+                File destination = outputProvider.getContentLocation(
                         jarInput.getFile().getAbsolutePath(),
-                        jarInput.getContentTypes(),
-                        jarInput.getScopes(),
-                        Format.JAR);
-                if (isIncremental && !emptyRun) {
+                        jarInput.getContentTypes(), jarInput.getScopes(), Format.JAR
+                );
+                if (isIncremental && injectByteCode) {
                     switch (status) {
                         case NOTCHANGED:
                             break;
                         case ADDED:
                         case CHANGED:
-                            transformJar(jarInput.getFile(), dest);
+                            transformJar(jarInput.getFile(), destination);
                             break;
                         case REMOVED:
-                            if (dest.exists()) {
-                                FileUtils.forceDelete(dest);
+                            if (destination.exists()) {
+                                FileUtils.forceDelete(destination);
                             }
                             break;
                     }
                 } else {
-                    //Forgive me!, Some project will store 3rd-party aar for several copies in dexbuilder folder,unknown issue.
+                    // Forgive me!, Some project will store 3rd-party aar
+                    // for several copies in dexbuilder folder,unknown issue.
                     if (inDuplicatedClassSafeMode() && !isIncremental && !flagForCleanDexBuilderFolder) {
-                        cleanDexBuilderFolder(dest);
+                        cleanDexBuilderFolder(destination);
                         flagForCleanDexBuilderFolder = true;
                     }
-                    transformJar(jarInput.getFile(), dest);
+                    transformJar(jarInput.getFile(), destination);
                 }
             }
 
@@ -120,7 +130,7 @@ public class MethLogTransform extends Transform {
                         directoryInput.getContentTypes(), directoryInput.getScopes(),
                         Format.DIRECTORY);
                 FileUtils.forceMkdir(dest);
-                if (isIncremental && !emptyRun) {
+                if (isIncremental && injectByteCode) {
                     String srcDirPath = directoryInput.getFile().getAbsolutePath();
                     String destDirPath = dest.getAbsolutePath();
                     Map<File, Status> fileStatusMap = directoryInput.getChangedFiles();
@@ -157,10 +167,6 @@ public class MethLogTransform extends Transform {
         }
 
         worker.await();
-
-        long costTime = System.currentTimeMillis() - startTime;
-        String message = getName() + " took " + costTime + "ms to process.";
-        logger.lifecycle(message);
     }
 
     private void transformSingleFile(
@@ -173,7 +179,7 @@ public class MethLogTransform extends Transform {
     }
 
     private void transformDir(final File inputDir, final File outputDir) throws IOException {
-        if (emptyRun) {
+        if (!injectByteCode) {
             FileUtils.copyDirectory(inputDir, outputDir);
             return;
         }
@@ -193,7 +199,7 @@ public class MethLogTransform extends Transform {
 
     private void transformJar(final File srcJar, final File destJar) {
         worker.submit(() -> {
-            if (emptyRun) {
+            if (!injectByteCode) {
                 FileUtils.copyFile(srcJar, destJar);
                 return null;
             }
@@ -208,7 +214,7 @@ public class MethLogTransform extends Transform {
                 String dexBuilderDir = replaceLastPart(dest.getAbsolutePath(), getName());
                 // intermediates/transforms/dexBuilder/debug
                 File file = new File(dexBuilderDir).getParentFile();
-                logger.lifecycle("Clean dexBuilder folder = " + file.getAbsolutePath());
+                pluginHelper.log("Clean dexBuilder folder = " + file.getAbsolutePath());
                 if (file.exists() && file.isDirectory()) {
                     com.android.utils.FileUtils.deleteDirectoryContents(file);
                 }
