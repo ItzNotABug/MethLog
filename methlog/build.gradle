@@ -19,19 +19,16 @@ android {
     }
 }
 
-/*
- * For local publishing & testing.
- *
- * group = 'com.lazygeniouz.methlog'
- * version = '1.3.0'
- *
- * project.afterEvaluate {
- *     publishing {
- *         publications {
- *             aar(MavenPublication) {
- *                 artifact bundleReleaseAar
- *             }
- *         }
- *     }
- * }
- * */
+// For local publishing & testing.
+//group = 'com.lazygeniouz.methlog'
+//version = '1.3.2'
+//
+//project.afterEvaluate {
+//    publishing {
+//        publications {
+//            methLogAnnotation(MavenPublication) {
+//                from components.release
+//            }
+//        }
+//    }
+//}
